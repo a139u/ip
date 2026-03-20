@@ -71,7 +71,7 @@ IP Detection (ipify) → Coordinates (ipapi.co) → Address (OpenStreetMap) → 
 
 ```bash
 # Docker run
-docker run -p 3000:3000 guoogaii/ip-geoaddress-generator:latest
+docker run -p 3000:3000 a139u/ip-geoaddress-generator:latest
 ```
 
 ## Project Structure

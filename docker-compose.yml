@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     build: .
-    image: guoogaii/ip-geoaddress-generator:latest
+    image: a139u/ip-geoaddress-generator:latest
     ports:
       - "3000:3000"
     environment:
