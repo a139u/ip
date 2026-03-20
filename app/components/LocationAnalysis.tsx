@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Spinner, Box, Text, Flex, Callout, Collapsible } from "@radix-ui/themes";
+import { Button, Spinner, Box, Text, Flex, Callout } from "@radix-ui/themes";
 import { useLocationAnalysis } from "@/hooks/useLocationAnalysis";
 import type { Address } from "../types";
 
@@ -22,26 +22,25 @@ function AnalysisSection({ title, icon, content, defaultOpen = false }: Analysis
   if (!content || content === "暂无相关数据") return null;
 
   return (
-    <Collapsible.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Collapsible.Trigger asChild>
-        <Flex
-          align="center"
-          gap="2"
-          style={{
-            cursor: "pointer",
-            padding: "8px 0",
-            borderBottom: "1px solid var(--gray-5)",
-          }}
-        >
-          <Text size="2" weight="bold">
-            {icon} {title}
-          </Text>
-          <Text size="1" color="gray" style={{ marginLeft: "auto" }}>
-            {isOpen ? "收起 ▲" : "展开 ▼"}
-          </Text>
-        </Flex>
-      </Collapsible.Trigger>
-      <Collapsible.Content>
+    <Box>
+      <Flex
+        align="center"
+        gap="2"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          cursor: "pointer",
+          padding: "8px 0",
+          borderBottom: "1px solid var(--gray-5)",
+        }}
+      >
+        <Text size="2" weight="bold">
+          {icon} {title}
+        </Text>
+        <Text size="1" color="gray" style={{ marginLeft: "auto" }}>
+          {isOpen ? "收起 ▲" : "展开 ▼"}
+        </Text>
+      </Flex>
+      {isOpen && (
         <Text
           size="2"
           style={{
@@ -53,8 +52,8 @@ function AnalysisSection({ title, icon, content, defaultOpen = false }: Analysis
         >
           {content}
         </Text>
-      </Collapsible.Content>
-    </Collapsible.Root>
+      )}
+    </Box>
   );
 }
 
