@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import Mailjs from "@cemalgnlts/mailjs";
 import type { TempMailMessage, MailEvent } from "@/app/types";
 
+const API_PROXY_URL = process.env.NEXT_PUBLIC_MAIL_PROXY_URL;
+
 interface UseMailReturn {
   tempEmail: string;
   emailLoading: boolean;
@@ -13,11 +15,19 @@ interface UseMailReturn {
   handleMessageClick: (msg: TempMailMessage) => Promise<void>;
 }
 
+function createMailClient(proxyUrl?: string): Mailjs {
+  const mail = new Mailjs();
+  if (proxyUrl) {
+    mail.baseUrl = proxyUrl;
+  }
+  return mail;
+}
+
 export default function useMail(): UseMailReturn {
   const [tempEmail, setTempEmail] = useState<string>("");
   const [emailLoading, setEmailLoading] = useState(true);
   const [messages, setMessages] = useState<TempMailMessage[]>([]);
-  const [mailjs] = useState(new Mailjs());
+  const [mailjs] = useState(() => createMailClient(API_PROXY_URL));
   const [selectedMessage, setSelectedMessage] =
     useState<TempMailMessage | null>(null);
   const [toastMessage, setToastMessage] = useState<TempMailMessage | null>(
