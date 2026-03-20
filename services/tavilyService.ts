@@ -47,34 +47,84 @@ function getNextApiKey(): string {
   return key;
 }
 
-function buildSearchQuery(address: Address): string {
-  const parts = [
-    address.city,
-    address.state,
-    address.country,
-  ].filter(Boolean);
+function buildLocationQuery(address: Address): string {
+  const parts = [address.city, address.state, address.country].filter(Boolean);
   return parts.join(", ");
 }
+
+interface SearchTopic {
+  name: string;
+  query: (location: string) => string;
+}
+
+const SEARCH_TOPICS: SearchTopic[] = [
+  { name: "communities", query: (loc) => `${loc} nearby neighborhoods communities districts` },
+  { name: "schools", query: (loc) => `${loc} schools education universities` },
+  { name: "history", query: (loc) => `${loc} history historical events` },
+  { name: "famousPeople", query: (loc) => `${loc} famous people celebrities notable figures` },
+  { name: "specialties", query: (loc) => `${loc} local specialties food products handicrafts` },
+  { name: "customs", query: (loc) => `${loc} customs traditions culture festivals` },
+];
 
 export interface LocationAnalysis {
   overview: string;
   safety: string;
   economy: string;
   infrastructure: string;
+  communities: string;
+  schools: string;
+  history: string;
+  famousPeople: string;
+  specialties: string;
+  customs: string;
   sources: string[];
+}
+
+interface TopicResults {
+  communities: TavilySearchResult[];
+  schools: TavilySearchResult[];
+  history: TavilySearchResult[];
+  famousPeople: TavilySearchResult[];
+  specialties: TavilySearchResult[];
+  customs: TavilySearchResult[];
 }
 
 class TavilyService {
   async searchAddress(address: Address): Promise<LocationAnalysis> {
-    const query = buildSearchQuery(address);
+    const location = buildLocationQuery(address);
 
-    const searchResults = await this.tavilySearch(query);
+    const topicResults = await this.searchAllTopics(location);
 
-    const analysis = this.analyzeResults(searchResults, address);
+    const generalResults = await this.tavilySearch(location, 5);
+
+    const analysis = this.analyzeAllResults(generalResults, topicResults, address);
     return analysis;
   }
 
-  private async tavilySearch(query: string): Promise<TavilySearchResult[]> {
+  private async searchAllTopics(location: string): Promise<TopicResults> {
+    const results: TopicResults = {
+      communities: [],
+      schools: [],
+      history: [],
+      famousPeople: [],
+      specialties: [],
+      customs: [],
+    };
+
+    const searchPromises = SEARCH_TOPICS.map(async (topic) => {
+      try {
+        const searchResults = await this.tavilySearch(topic.query(location), 3);
+        results[topic.name as keyof TopicResults] = searchResults;
+      } catch (error) {
+        console.error(`Error searching ${topic.name}:`, error);
+      }
+    });
+
+    await Promise.all(searchPromises);
+    return results;
+  }
+
+  private async tavilySearch(query: string, maxResults = 5): Promise<TavilySearchResult[]> {
     const apiKey = getNextApiKey();
 
     try {
@@ -83,7 +133,7 @@ class TavilyService {
         {
           query,
           search_depth: "basic",
-          max_results: 5,
+          max_results: maxResults,
         },
         {
           headers: {
@@ -100,83 +150,147 @@ class TavilyService {
     }
   }
 
-  private analyzeResults(
-    results: TavilySearchResult[],
+  private extractSummary(results: TavilySearchResult[], maxLength = 200): string {
+    if (results.length === 0) return "暂无相关数据";
+
+    const combined = results.map((r) => r.content).join(" ");
+    const cleaned = combined.replace(/\s+/g, " ").trim();
+
+    if (cleaned.length <= maxLength) return cleaned;
+
+    const truncated = cleaned.substring(0, maxLength);
+    const lastPunctuation = Math.max(
+      truncated.lastIndexOf("。"),
+      truncated.lastIndexOf(","),
+      truncated.lastIndexOf("，"),
+      truncated.lastIndexOf(". ")
+    );
+
+    if (lastPunctuation > maxLength * 0.6) {
+      return truncated.substring(0, lastPunctuation + 1);
+    }
+    return truncated + "...";
+  }
+
+  private extractListItems(results: TavilySearchResult[], keywords: string[], maxItems = 3): string[] {
+    const items: string[] = [];
+    const combined = results.map((r) => r.content).join(" ");
+
+    for (const keyword of keywords) {
+      const regex = new RegExp(`[^。.]*${keyword}[^。.]+[。.]`, "gi");
+      const matches = combined.match(regex);
+      if (matches) {
+        for (const match of matches.slice(0, 2)) {
+          const cleaned = match.replace(/\s+/g, " ").trim();
+          if (cleaned.length > 5 && cleaned.length < 100) {
+            items.push(cleaned);
+          }
+        }
+      }
+    }
+
+    return items.slice(0, maxItems);
+  }
+
+  private analyzeAllResults(
+    generalResults: TavilySearchResult[],
+    topicResults: TopicResults,
     address: Address
   ): LocationAnalysis {
-    if (results.length === 0) {
-      return {
-        overview: `这是位于 ${address.city || ""}, ${address.state || ""}, ${address.country || ""} 的地址。暂无详细数据。`,
-        safety: "暂无安全数据",
-        economy: "暂无经济数据",
-        infrastructure: "暂无基础设施数据",
-        sources: [],
-      };
-    }
-
-    const combinedContent = results
-      .map((r) => r.content)
-      .join("\n")
-      .toLowerCase();
-
-    const sources = results.map((r) => r.title).slice(0, 3);
-
     const locationStr = `${address.city || ""}, ${address.state || ""}, ${address.country || ""}`;
 
-    let overview = `位于 ${locationStr} 的区域。`;
-    if (combinedContent.includes("suburb") || combinedContent.includes("residential")) {
-      overview += "这是一个住宅区。";
-    } else if (combinedContent.includes("urban") || combinedContent.includes("city")) {
-      overview += "这是一个城市中心区域。";
-    } else if (combinedContent.includes("rural") || combinedContent.includes("countryside")) {
-      overview += "这是一个乡村或郊区。";
+    const generalContent = generalResults.map((r) => r.content).join(" ").toLowerCase();
+
+    let overview = `位于 ${locationStr}`;
+    if (generalContent.includes("suburb") || generalContent.includes("residential")) {
+      overview += "，这是一个住宅区";
+    } else if (generalContent.includes("urban") || generalContent.includes("city center")) {
+      overview += "，位于城市中心区域";
+    } else if (generalContent.includes("rural") || generalContent.includes("countryside")) {
+      overview += "，位于乡村或郊区";
+    } else if (generalContent.includes("coastal") || generalContent.includes("beach")) {
+      overview += "，这是一个沿海地区";
+    } else if (generalContent.includes("mountain") || generalContent.includes("hills")) {
+      overview += "，这是一个山区或丘陵地带";
     }
+    overview += "。";
 
     let safety = "安全信息：";
-    if (combinedContent.includes("safe") || combinedContent.includes("low crime")) {
-      safety += "该区域治安状况良好，犯罪率较低。";
-    } else if (combinedContent.includes("danger") || combinedContent.includes("high crime")) {
-      safety += "需要注意安全，该区域犯罪率较高。";
+    if (generalContent.includes("safe") && generalContent.includes("low crime")) {
+      safety += "治安良好，犯罪率低，适合居住。";
+    } else if (generalContent.includes("danger") || generalContent.includes("high crime")) {
+      safety += "治安需注意，犯罪率相对较高。";
+    } else if (generalContent.includes("police") || generalContent.includes("security")) {
+      safety += "有完善的安全保障体系。";
     } else {
-      safety += "治安情况一般，建议了解当地情况。";
+      safety += "治安状况一般，建议了解当地情况。";
     }
 
     let economy = "经济概况：";
-    if (
-      combinedContent.includes("affluent") ||
-      combinedContent.includes("high income") ||
-      combinedContent.includes("wealthy")
-    ) {
-      economy += "这是一个高收入/富裕地区。";
-    } else if (
-      combinedContent.includes("poor") ||
-      combinedContent.includes("low income") ||
-      combinedContent.includes("economically disadvantaged")
-    ) {
-      economy += "这是一个经济欠发达地区。";
+    if (generalContent.includes("affluent") || generalContent.includes("wealthy") || generalContent.includes("high income")) {
+      economy += "高收入/富裕地区，经济发达。";
+    } else if (generalContent.includes("poor") || generalContent.includes("low income") || generalContent.includes("economically disadvantaged")) {
+      economy += "经济欠发达地区。";
+    } else if (generalContent.includes("industrial") || generalContent.includes("manufacturing")) {
+      economy += "工业/制造业发达地区。";
+    } else if (generalContent.includes("tourism") || generalContent.includes("tourist")) {
+      economy += "旅游业为经济支柱。";
     } else {
-      economy += "这是一个中等经济发展水平的区域。";
+      economy += "中等经济发展水平。";
     }
 
     let infrastructure = "基础设施：";
-    if (
-      combinedContent.includes("school") ||
-      combinedContent.includes("hospital") ||
-      combinedContent.includes("shopping")
-    ) {
-      infrastructure += "周边设施齐全，包括学校、医院、购物等。";
-    } else if (combinedContent.includes("rural") || combinedContent.includes("remote")) {
-      infrastructure += "位于偏远地区，设施可能有限。";
+    const hasSchool = generalContent.includes("school") || generalContent.includes("university");
+    const hasHospital = generalContent.includes("hospital") || generalContent.includes("medical");
+    const hasShopping = generalContent.includes("shopping") || generalContent.includes("mall");
+
+    if (hasSchool && hasHospital && hasShopping) {
+      infrastructure += "设施齐全，学校、医院、商场等配套完善。";
+    } else if (hasSchool && hasHospital) {
+      infrastructure += "教育和医疗设施较好。";
+    } else if (hasSchool) {
+      infrastructure += "教育资源丰富。";
+    } else if (hasHospital) {
+      infrastructure += "医疗设施较好。";
+    } else if (generalContent.includes("rural") || generalContent.includes("remote")) {
+      infrastructure += "位于偏远地区，设施相对有限。";
     } else {
-      infrastructure += "基础设施情况一般。";
+      infrastructure += "基础设施配套一般。";
     }
+
+    const communities = this.extractSummary(topicResults.communities);
+    const schools = this.extractSummary(topicResults.schools);
+    const history = this.extractSummary(topicResults.history);
+    const famousPeople = this.extractSummary(topicResults.famousPeople);
+    const specialties = this.extractSummary(topicResults.specialties);
+    const customs = this.extractSummary(topicResults.customs);
+
+    const allSources = [
+      ...generalResults,
+      ...topicResults.communities,
+      ...topicResults.schools,
+      ...topicResults.history,
+      ...topicResults.famousPeople,
+      ...topicResults.specialties,
+      ...topicResults.customs,
+    ];
+    const uniqueSources = allSources
+      .map((r) => r.title)
+      .filter((t, i, arr) => arr.indexOf(t) === i)
+      .slice(0, 5);
 
     return {
       overview,
       safety,
       economy,
       infrastructure,
-      sources,
+      communities,
+      schools,
+      history,
+      famousPeople,
+      specialties,
+      customs,
+      sources: uniqueSources,
     };
   }
 }
