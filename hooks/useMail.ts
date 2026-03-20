@@ -18,7 +18,12 @@ interface UseMailReturn {
 function createMailClient(proxyUrl?: string): Mailjs {
   const mail = new Mailjs();
   if (proxyUrl) {
-    mail.baseUrl = proxyUrl;
+    Object.defineProperty(mail, 'baseUrl', {
+      value: proxyUrl,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    });
   }
   return mail;
 }
