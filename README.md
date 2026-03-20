@@ -46,7 +46,7 @@ https://ip-geoaddress-generator.pages.dev/
 Docker部署
 
 ```bash
-docker run -p 3000:3000 guoogaii/ip-geoaddress-generator:latest
+docker run -p 3000:3000 a139u/ip-geoaddress-generator:latest
 ```
 
 ## 本地开发
