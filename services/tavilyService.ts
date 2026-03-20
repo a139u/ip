@@ -47,84 +47,38 @@ function getNextApiKey(): string {
   return key;
 }
 
-function buildLocationQuery(address: Address): string {
-  const parts = [address.city, address.state, address.country].filter(Boolean);
-  return parts.join(", ");
-}
-
-interface SearchTopic {
-  name: string;
-  query: (location: string) => string;
-}
-
-const SEARCH_TOPICS: SearchTopic[] = [
-  { name: "communities", query: (loc) => `${loc} nearby neighborhoods communities districts` },
-  { name: "schools", query: (loc) => `${loc} schools education universities` },
-  { name: "history", query: (loc) => `${loc} history historical events` },
-  { name: "famousPeople", query: (loc) => `${loc} famous people celebrities notable figures` },
-  { name: "specialties", query: (loc) => `${loc} local specialties food products handicrafts` },
-  { name: "customs", query: (loc) => `${loc} customs traditions culture festivals` },
-];
-
 export interface LocationAnalysis {
-  overview: string;
-  safety: string;
-  economy: string;
-  infrastructure: string;
-  communities: string;
   schools: string;
-  history: string;
+  hospitals: string;
+  shopping: string;
   famousPeople: string;
   specialties: string;
   customs: string;
   sources: string[];
 }
 
-interface TopicResults {
-  communities: TavilySearchResult[];
-  schools: TavilySearchResult[];
-  history: TavilySearchResult[];
-  famousPeople: TavilySearchResult[];
-  specialties: TavilySearchResult[];
-  customs: TavilySearchResult[];
-}
-
 class TavilyService {
   async searchAddress(address: Address): Promise<LocationAnalysis> {
-    const location = buildLocationQuery(address);
+    const query = this.buildSearchQuery(address);
+    const results = await this.tavilySearch(query, 10);
 
-    const topicResults = await this.searchAllTopics(location);
-
-    const generalResults = await this.tavilySearch(location, 5);
-
-    const analysis = this.analyzeAllResults(generalResults, topicResults, address);
-    return analysis;
+    return this.analyzeResults(results, address);
   }
 
-  private async searchAllTopics(location: string): Promise<TopicResults> {
-    const results: TopicResults = {
-      communities: [],
-      schools: [],
-      history: [],
-      famousPeople: [],
-      specialties: [],
-      customs: [],
-    };
+  private buildSearchQuery(address: Address): string {
+    const parts = [
+      address.road,
+      address.city,
+      address.state,
+      address.country,
+    ].filter(Boolean);
 
-    const searchPromises = SEARCH_TOPICS.map(async (topic) => {
-      try {
-        const searchResults = await this.tavilySearch(topic.query(location), 3);
-        results[topic.name as keyof TopicResults] = searchResults;
-      } catch (error) {
-        console.error(`Error searching ${topic.name}:`, error);
-      }
-    });
+    if (parts.length === 0) return "unknown location";
 
-    await Promise.all(searchPromises);
-    return results;
+    return parts.join(", ");
   }
 
-  private async tavilySearch(query: string, maxResults = 5): Promise<TavilySearchResult[]> {
+  private async tavilySearch(query: string, maxResults = 10): Promise<TavilySearchResult[]> {
     const apiKey = getNextApiKey();
 
     try {
@@ -150,76 +104,17 @@ class TavilyService {
     }
   }
 
-  private extractSummary(results: TavilySearchResult[], maxLength = 200): string {
-    if (results.length === 0) return "暂无相关数据";
-
-    const combined = results.map((r) => r.content).join(" ");
-    const cleaned = combined.replace(/\s+/g, " ").trim();
-
-    if (cleaned.length <= maxLength) return cleaned;
-
-    const truncated = cleaned.substring(0, maxLength);
-    const lastPunctuation = Math.max(
-      truncated.lastIndexOf("。"),
-      truncated.lastIndexOf(","),
-      truncated.lastIndexOf("，"),
-      truncated.lastIndexOf(". ")
-    );
-
-    if (lastPunctuation > maxLength * 0.6) {
-      return truncated.substring(0, lastPunctuation + 1);
-    }
-    return truncated + "...";
-  }
-
-  private extractNamedEntities(results: TavilySearchResult[], type: string): string[] {
-    const entities: string[] = [];
-    const combined = results.map((r) => r.content).join(" ");
-
-    const patterns: Record<string, RegExp[]> = {
-      school: [
-        /[A-Z][a-zA-Z]*(?:School|University|College|Institute)[^.,，.]*/g,
-        /(?:University|College) of [A-Z][a-zA-Z]*(?:, [^.,，.]*)?/g,
-        /[A-Z][a-z]+(?: Primary| Secondary| High)? School/g,
-      ],
-      hospital: [
-        /[A-Z][a-zA-Z]*(?:Hospital|Medical Center|Clinic|Health)[^.,，.]*/g,
-        /(?:General|Regional|Central) Hospital[^.,，.]*/g,
-      ],
-      shopping: [
-        /[A-Z][a-zA-Z]*(?:Mall|Center|Centre|Plaza|Shopping)[^.,，.]*/g,
-        /(?:Shopping | )Center[^.,，.]*/g,
-      ],
-    };
-
-    const regexes = patterns[type] || patterns.school;
-
-    for (const regex of regexes) {
-      const matches = combined.match(regex);
-      if (matches) {
-        for (const match of matches) {
-          const cleaned = match.replace(/\s+/g, " ").trim();
-          if (cleaned.length > 3 && cleaned.length < 80) {
-            entities.push(cleaned);
-          }
-        }
-      }
-    }
-
-    const unique = [...new Set(entities)];
-    return unique.slice(0, 5);
-  }
-
-  private extractGenericItems(results: TavilySearchResult[], keywords: string[]): string[] {
+  private extractItems(results: TavilySearchResult[], keywords: string[]): string {
     const items: string[] = [];
     const combined = results.map((r) => r.content).join(" ");
 
     for (const keyword of keywords) {
-      const sentences = combined.split(/[.。!！]/);
+      const sentences = combined.split(/[.。!！?？]/);
       for (const sentence of sentences) {
-        if (sentence.toLowerCase().includes(keyword.toLowerCase())) {
+        const lowerSentence = sentence.toLowerCase();
+        if (lowerSentence.includes(keyword.toLowerCase())) {
           const cleaned = sentence.replace(/\s+/g, " ").trim();
-          if (cleaned.length > 10 && cleaned.length < 150) {
+          if (cleaned.length > 5 && cleaned.length < 200) {
             items.push(cleaned);
           }
         }
@@ -227,106 +122,64 @@ class TavilyService {
     }
 
     const unique = [...new Set(items)];
-    return unique.slice(0, 3);
+    if (unique.length === 0) return "暂无相关数据";
+
+    return unique.slice(0, 5).map((item) => `• ${item}`).join("\n");
   }
 
-  private analyzeAllResults(
-    generalResults: TavilySearchResult[],
-    topicResults: TopicResults,
-    address: Address
-  ): LocationAnalysis {
-    const locationStr = `${address.city || ""}, ${address.state || ""}, ${address.country || ""}`;
-
-    const generalContent = generalResults.map((r) => r.content).join(" ").toLowerCase();
-
-    let overview = `位于 ${locationStr}`;
-    if (generalContent.includes("suburb") || generalContent.includes("residential")) {
-      overview += "，这是一个住宅区";
-    } else if (generalContent.includes("urban") || generalContent.includes("city center")) {
-      overview += "，位于城市中心区域";
-    } else if (generalContent.includes("rural") || generalContent.includes("countryside")) {
-      overview += "，位于乡村或郊区";
-    } else if (generalContent.includes("coastal") || generalContent.includes("beach")) {
-      overview += "，这是一个沿海地区";
-    } else if (generalContent.includes("mountain") || generalContent.includes("hills")) {
-      overview += "，这是一个山区或丘陵地带";
-    }
-    overview += "。";
-
-    let safety = "安全信息：";
-    if (generalContent.includes("safe") && generalContent.includes("low crime")) {
-      safety += "治安良好，犯罪率低，适合居住。";
-    } else if (generalContent.includes("danger") || generalContent.includes("high crime")) {
-      safety += "治安需注意，犯罪率相对较高。";
-    } else if (generalContent.includes("police") || generalContent.includes("security")) {
-      safety += "有完善的安全保障体系。";
-    } else {
-      safety += "治安状况一般，建议了解当地情况。";
+  private analyzeResults(results: TavilySearchResult[], address: Address): LocationAnalysis {
+    if (results.length === 0) {
+      return {
+        schools: "暂无相关数据",
+        hospitals: "暂无相关数据",
+        shopping: "暂无相关数据",
+        famousPeople: "暂无相关数据",
+        specialties: "暂无相关数据",
+        customs: "暂无相关数据",
+        sources: [],
+      };
     }
 
-    let economy = "经济概况：";
-    if (generalContent.includes("affluent") || generalContent.includes("wealthy") || generalContent.includes("high income")) {
-      economy += "高收入/富裕地区，经济发达。";
-    } else if (generalContent.includes("poor") || generalContent.includes("low income") || generalContent.includes("economically disadvantaged")) {
-      economy += "经济欠发达地区。";
-    } else if (generalContent.includes("industrial") || generalContent.includes("manufacturing")) {
-      economy += "工业/制造业发达地区。";
-    } else if (generalContent.includes("tourism") || generalContent.includes("tourist")) {
-      economy += "旅游业为经济支柱。";
-    } else {
-      economy += "中等经济发展水平。";
-    }
+    const sources = results.map((r) => r.title).filter((t, i, arr) => arr.indexOf(t) === i).slice(0, 5);
 
-    const schools = this.extractNamedEntities(topicResults.schools, "school");
-    const hospitals = this.extractNamedEntities(generalResults.concat(topicResults.schools), "hospital");
-    const shoppingCenters = this.extractNamedEntities(generalResults.concat(topicResults.schools), "shopping");
+    const schools = this.extractItems(results, [
+      "school", "university", "college", "institute", "academy",
+      "中学", "小学", "大学", "学院", "学校", "教育",
+    ]);
 
-    let infrastructure = "";
-    if (schools.length > 0) {
-      infrastructure += `🎓 学校/教育机构：\n${schools.map((s) => `   • ${s}`).join("\n")}\n`;
-    }
-    if (hospitals.length > 0) {
-      infrastructure += `🏥 医院/医疗：\n${hospitals.map((h) => `   • ${h}`).join("\n")}\n`;
-    }
-    if (shoppingCenters.length > 0) {
-      infrastructure += `🛒 购物中心：\n${shoppingCenters.map((s) => `   • ${s}`).join("\n")}\n`;
-    }
-    if (!infrastructure) {
-      infrastructure = "暂无详细设施信息";
-    }
+    const hospitals = this.extractItems(results, [
+      "hospital", "clinic", "medical", "healthcare", "doctor",
+      "医院", "诊所", "医疗", "卫生", "保健",
+    ]);
 
-    const communities = this.extractGenericItems(topicResults.communities, ["neighborhood", "district", "community", "area", "社区", "街区", "区域"]);
-    const history = this.extractGenericItems(topicResults.history, ["history", "historical", "event", "war", "built", "founded", "历史", "事件", "建于"]);
-    const famousPeople = this.extractGenericItems(topicResults.famousPeople, ["famous", "celebrity", "born", "native", "famous", "celebrity", "名人", "著名", "出生于"]);
-    const specialties = this.extractGenericItems(topicResults.specialties, ["specialty", "famous", "food", "product", "local", "specialty", "特产", "美食", "产品"]);
-    const customs = this.extractGenericItems(topicResults.customs, ["custom", "tradition", "festival", "culture", "风俗", "传统", "节日", "文化"]);
+    const shopping = this.extractItems(results, [
+      "mall", "shopping", "store", "market", "plaza", "center",
+      "商场", "购物", "超市", "市场", "商店", "中心",
+    ]);
 
-    const allSources = [
-      ...generalResults,
-      ...topicResults.communities,
-      ...topicResults.schools,
-      ...topicResults.history,
-      ...topicResults.famousPeople,
-      ...topicResults.specialties,
-      ...topicResults.customs,
-    ];
-    const uniqueSources = allSources
-      .map((r) => r.title)
-      .filter((t, i, arr) => arr.indexOf(t) === i)
-      .slice(0, 5);
+    const famousPeople = this.extractItems(results, [
+      "famous", "celebrity", "born", "native", "artist", "writer", "politician",
+      "名人", "明星", "出生于", "著名", "艺术家", "政治家",
+    ]);
+
+    const specialties = this.extractItems(results, [
+      "specialty", "specialty", "food", "product", "local", "famous", "cuisine",
+      "特产", "美食", "产品", "当地", "著名", "菜肴",
+    ]);
+
+    const customs = this.extractItems(results, [
+      "custom", "tradition", "festival", "culture", "customs",
+      "风俗", "传统", "节日", "文化", "习俗",
+    ]);
 
     return {
-      overview,
-      safety,
-      economy,
-      infrastructure,
-      communities,
       schools,
-      history,
+      hospitals,
+      shopping,
       famousPeople,
       specialties,
       customs,
-      sources: uniqueSources,
+      sources,
     };
   }
 }

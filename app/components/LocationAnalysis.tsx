@@ -42,7 +42,15 @@ function AnalysisSection({ title, icon, content, defaultOpen = false }: Analysis
         </Flex>
       </Collapsible.Trigger>
       <Collapsible.Content>
-        <Text size="2" style={{ padding: "8px 0", display: "block", lineHeight: "1.6" }}>
+        <Text
+          size="2"
+          style={{
+            padding: "8px 0",
+            display: "block",
+            lineHeight: "1.8",
+            whiteSpace: "pre-wrap",
+          }}
+        >
           {content}
         </Text>
       </Collapsible.Content>
@@ -62,6 +70,8 @@ export function LocationAnalysis({ address }: LocationAnalysisProps) {
 
   if (!address) return null;
 
+  const locationName = [address.road, address.city, address.country].filter(Boolean).join(", ");
+
   return (
     <Box>
       <Flex justify="center" mb="3">
@@ -74,10 +84,10 @@ export function LocationAnalysis({ address }: LocationAnalysisProps) {
           {isAnalyzing ? (
             <>
               <Spinner size="2" />
-              <Text ml="2">深度分析中...</Text>
+              <Text ml="2">分析中...</Text>
             </>
           ) : (
-            "🔍 AI 深度分析此地详情"
+            "🔍 AI 分析此地详情"
           )}
         </Button>
       </Flex>
@@ -98,22 +108,13 @@ export function LocationAnalysis({ address }: LocationAnalysisProps) {
           }}
         >
           <Text size="2" weight="bold" mb="3" style={{ display: "block" }}>
-            📊 {address.city || ""} 深度分析报告
+            📊 {locationName} 附近信息
           </Text>
 
           <Box style={{ borderTop: "1px solid var(--gray-4)", paddingTop: "8px" }}>
-            <AnalysisSection
-              title="区域概况"
-              icon="🗺️"
-              content={analysis.overview}
-              defaultOpen={true}
-            />
-            <AnalysisSection title="安全信息" icon="🛡️" content={analysis.safety} />
-            <AnalysisSection title="经济概况" icon="💰" content={analysis.economy} />
-            <AnalysisSection title="基础设施" icon="🏗️" content={analysis.infrastructure} />
-            <AnalysisSection title="附近社区" icon="🏘️" content={analysis.communities} />
-            <AnalysisSection title="教育资源" icon="🎓" content={analysis.schools} />
-            <AnalysisSection title="历史事件" icon="📜" content={analysis.history} />
+            <AnalysisSection title="学校/教育" icon="🎓" content={analysis.schools} defaultOpen={true} />
+            <AnalysisSection title="医院/医疗" icon="🏥" content={analysis.hospitals} />
+            <AnalysisSection title="购物/商场" icon="🛒" content={analysis.shopping} />
             <AnalysisSection title="名人典故" icon="👤" content={analysis.famousPeople} />
             <AnalysisSection title="特产美食" icon="🎁" content={analysis.specialties} />
             <AnalysisSection title="风俗文化" icon="🎭" content={analysis.customs} />
@@ -143,7 +144,7 @@ export function LocationAnalysis({ address }: LocationAnalysisProps) {
 
           <Flex justify="center" mt="3">
             <Button onClick={() => setIsExpanded(false)} variant="ghost" size="1">
-              收起报告
+              收起
             </Button>
           </Flex>
         </Box>
