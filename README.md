@@ -41,7 +41,7 @@ https://ip-geoaddress-generator.pages.dev/
 
 ## 部署
 
-[Cloudflare部署](https://github.com/a139u/ip/blob/main/Cloudflare部署教程.md)
+[Cloudflare部署](https://github.com/a139u/ip/blob/master/Cloudflare部署教程.md)
 
 Docker部署
 
