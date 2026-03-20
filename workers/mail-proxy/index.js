@@ -27,6 +27,18 @@ async function handleRequest(request) {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
+  // Handle root path - return status
+  if (pathname === '/' || pathname === '') {
+    return new Response(JSON.stringify({
+      status: 'ok',
+      service: 'Mail.tm Proxy',
+      message: 'Worker is running. Use /domains, /accounts, /token, /messages endpoints.'
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   // Find matching endpoint
   let targetPath = null;
   let method = request.method;
@@ -44,7 +56,7 @@ async function handleRequest(request) {
   }
 
   if (!targetPath) {
-    return new Response(JSON.stringify({ error: 'Not found' }), {
+    return new Response(JSON.stringify({ error: 'Not found', path: pathname }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
     });
