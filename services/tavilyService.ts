@@ -172,24 +172,62 @@ class TavilyService {
     return truncated + "...";
   }
 
-  private extractListItems(results: TavilySearchResult[], keywords: string[], maxItems = 3): string[] {
+  private extractNamedEntities(results: TavilySearchResult[], type: string): string[] {
+    const entities: string[] = [];
+    const combined = results.map((r) => r.content).join(" ");
+
+    const patterns: Record<string, RegExp[]> = {
+      school: [
+        /[A-Z][a-zA-Z]*(?:School|University|College|Institute)[^.,，.]*/g,
+        /(?:University|College) of [A-Z][a-zA-Z]*(?:, [^.,，.]*)?/g,
+        /[A-Z][a-z]+(?: Primary| Secondary| High)? School/g,
+      ],
+      hospital: [
+        /[A-Z][a-zA-Z]*(?:Hospital|Medical Center|Clinic|Health)[^.,，.]*/g,
+        /(?:General|Regional|Central) Hospital[^.,，.]*/g,
+      ],
+      shopping: [
+        /[A-Z][a-zA-Z]*(?:Mall|Center|Centre|Plaza|Shopping)[^.,，.]*/g,
+        /(?:Shopping | )Center[^.,，.]*/g,
+      ],
+    };
+
+    const regexes = patterns[type] || patterns.school;
+
+    for (const regex of regexes) {
+      const matches = combined.match(regex);
+      if (matches) {
+        for (const match of matches) {
+          const cleaned = match.replace(/\s+/g, " ").trim();
+          if (cleaned.length > 3 && cleaned.length < 80) {
+            entities.push(cleaned);
+          }
+        }
+      }
+    }
+
+    const unique = [...new Set(entities)];
+    return unique.slice(0, 5);
+  }
+
+  private extractGenericItems(results: TavilySearchResult[], keywords: string[]): string[] {
     const items: string[] = [];
     const combined = results.map((r) => r.content).join(" ");
 
     for (const keyword of keywords) {
-      const regex = new RegExp(`[^。.]*${keyword}[^。.]+[。.]`, "gi");
-      const matches = combined.match(regex);
-      if (matches) {
-        for (const match of matches.slice(0, 2)) {
-          const cleaned = match.replace(/\s+/g, " ").trim();
-          if (cleaned.length > 5 && cleaned.length < 100) {
+      const sentences = combined.split(/[.。!！]/);
+      for (const sentence of sentences) {
+        if (sentence.toLowerCase().includes(keyword.toLowerCase())) {
+          const cleaned = sentence.replace(/\s+/g, " ").trim();
+          if (cleaned.length > 10 && cleaned.length < 150) {
             items.push(cleaned);
           }
         }
       }
     }
 
-    return items.slice(0, maxItems);
+    const unique = [...new Set(items)];
+    return unique.slice(0, 3);
   }
 
   private analyzeAllResults(
@@ -239,31 +277,29 @@ class TavilyService {
       economy += "中等经济发展水平。";
     }
 
-    let infrastructure = "基础设施：";
-    const hasSchool = generalContent.includes("school") || generalContent.includes("university");
-    const hasHospital = generalContent.includes("hospital") || generalContent.includes("medical");
-    const hasShopping = generalContent.includes("shopping") || generalContent.includes("mall");
+    const schools = this.extractNamedEntities(topicResults.schools, "school");
+    const hospitals = this.extractNamedEntities(generalResults.concat(topicResults.schools), "hospital");
+    const shoppingCenters = this.extractNamedEntities(generalResults.concat(topicResults.schools), "shopping");
 
-    if (hasSchool && hasHospital && hasShopping) {
-      infrastructure += "设施齐全，学校、医院、商场等配套完善。";
-    } else if (hasSchool && hasHospital) {
-      infrastructure += "教育和医疗设施较好。";
-    } else if (hasSchool) {
-      infrastructure += "教育资源丰富。";
-    } else if (hasHospital) {
-      infrastructure += "医疗设施较好。";
-    } else if (generalContent.includes("rural") || generalContent.includes("remote")) {
-      infrastructure += "位于偏远地区，设施相对有限。";
-    } else {
-      infrastructure += "基础设施配套一般。";
+    let infrastructure = "";
+    if (schools.length > 0) {
+      infrastructure += `🎓 学校/教育机构：\n${schools.map((s) => `   • ${s}`).join("\n")}\n`;
+    }
+    if (hospitals.length > 0) {
+      infrastructure += `🏥 医院/医疗：\n${hospitals.map((h) => `   • ${h}`).join("\n")}\n`;
+    }
+    if (shoppingCenters.length > 0) {
+      infrastructure += `🛒 购物中心：\n${shoppingCenters.map((s) => `   • ${s}`).join("\n")}\n`;
+    }
+    if (!infrastructure) {
+      infrastructure = "暂无详细设施信息";
     }
 
-    const communities = this.extractSummary(topicResults.communities);
-    const schools = this.extractSummary(topicResults.schools);
-    const history = this.extractSummary(topicResults.history);
-    const famousPeople = this.extractSummary(topicResults.famousPeople);
-    const specialties = this.extractSummary(topicResults.specialties);
-    const customs = this.extractSummary(topicResults.customs);
+    const communities = this.extractGenericItems(topicResults.communities, ["neighborhood", "district", "community", "area", "社区", "街区", "区域"]);
+    const history = this.extractGenericItems(topicResults.history, ["history", "historical", "event", "war", "built", "founded", "历史", "事件", "建于"]);
+    const famousPeople = this.extractGenericItems(topicResults.famousPeople, ["famous", "celebrity", "born", "native", "famous", "celebrity", "名人", "著名", "出生于"]);
+    const specialties = this.extractGenericItems(topicResults.specialties, ["specialty", "famous", "food", "product", "local", "specialty", "特产", "美食", "产品"]);
+    const customs = this.extractGenericItems(topicResults.customs, ["custom", "tradition", "festival", "culture", "风俗", "传统", "节日", "文化"]);
 
     const allSources = [
       ...generalResults,
