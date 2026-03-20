@@ -1,6 +1,7 @@
 import { Card, Text, Flex, Box, Separator } from "@radix-ui/themes";
 import { UserInfo } from "./UserInfo";
 import { AddressInfo } from "./AddressInfo";
+import { LocationAnalysis } from "./LocationAnalysis";
 import { Signal } from "@preact/signals-react";
 import type { User, Address } from "../types";
 
@@ -38,6 +39,7 @@ export const RightCard = ({
             />
             <Separator size="4" />
             <AddressInfo addressSignal={addressSignal} loading={isLoading} />
+            <LocationAnalysis address={addressSignal.value} />
           </Flex>
         </Box>
       </Flex>
