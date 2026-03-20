@@ -14,7 +14,7 @@
 
 ## 访问地址
 
-https://ip-geoaddress-generator.pages.dev/
+https://ip.590.wiki
 
 ## 主要功能
 
